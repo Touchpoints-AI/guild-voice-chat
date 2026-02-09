@@ -1,0 +1,920 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Guild Voice - Real-time Voice Chat</title>
+    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700;900&family=Lato:wght@300;400;700&display=swap" rel="stylesheet">
+    <script src="/socket.io/socket.io.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --bg-dark: #0a0e1a;
+            --bg-secondary: #141824;
+            --bg-card: #1a1f2e;
+            --accent-gold: #f4c542;
+            --accent-blue: #4a9eff;
+            --accent-red: #ff4444;
+            --text-primary: #e8e9ed;
+            --text-secondary: #9ca3af;
+            --border: #2a2f3e;
+        }
+
+        body {
+            font-family: 'Lato', sans-serif;
+            background: var(--bg-dark);
+            color: var(--text-primary);
+            min-height: 100vh;
+            background-image: 
+                radial-gradient(ellipse at 20% 0%, rgba(74, 158, 255, 0.15) 0%, transparent 50%),
+                radial-gradient(ellipse at 80% 100%, rgba(244, 197, 66, 0.1) 0%, transparent 50%);
+            overflow-x: hidden;
+        }
+
+        .header {
+            background: linear-gradient(180deg, var(--bg-secondary) 0%, transparent 100%);
+            padding: 2rem;
+            border-bottom: 2px solid var(--border);
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+        }
+
+        .header-content {
+            max-width: 1400px;
+            margin: 0 auto;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        h1 {
+            font-family: 'Cinzel', serif;
+            font-size: 2.5rem;
+            font-weight: 900;
+            color: var(--accent-gold);
+            text-shadow: 0 0 20px rgba(244, 197, 66, 0.4), 2px 2px 4px rgba(0, 0, 0, 0.8);
+            letter-spacing: 2px;
+        }
+
+        .user-info {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            background: var(--bg-card);
+            padding: 0.75rem 1.5rem;
+            border-radius: 8px;
+            border: 1px solid var(--border);
+        }
+
+        .username-input {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            color: var(--text-primary);
+            padding: 0.5rem 1rem;
+            border-radius: 4px;
+            font-size: 0.95rem;
+            outline: none;
+            transition: border-color 0.3s;
+        }
+
+        .username-input:focus {
+            border-color: var(--accent-blue);
+        }
+
+        .connection-status {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--accent-blue);
+            animation: pulse-dot 2s ease-in-out infinite;
+        }
+
+        @keyframes pulse-dot {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.4; }
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 2rem auto;
+            padding: 0 2rem;
+            display: grid;
+            grid-template-columns: 300px 1fr;
+            gap: 2rem;
+            animation: fadeIn 0.6s ease-out;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .sidebar {
+            display: flex;
+            flex-direction: column;
+            gap: 1.5rem;
+        }
+
+        .room-list {
+            background: var(--bg-card);
+            border-radius: 12px;
+            border: 1px solid var(--border);
+            padding: 1.5rem;
+            box-shadow: 0 8px 30px rgba(0, 0, 0, 0.4);
+        }
+
+        .room-list h2 {
+            font-family: 'Cinzel', serif;
+            font-size: 1.3rem;
+            color: var(--accent-gold);
+            margin-bottom: 1rem;
+            letter-spacing: 1px;
+        }
+
+        .room-item {
+            background: var(--bg-secondary);
+            padding: 1rem;
+            border-radius: 8px;
+            margin-bottom: 0.75rem;
+            cursor: pointer;
+            transition: all 0.3s;
+            border: 2px solid transparent;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .room-item::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(74, 158, 255, 0.1), transparent);
+            transition: left 0.5s;
+        }
+
+        .room-item:hover::before {
+            left: 100%;
+        }
+
+        .room-item:hover {
+            border-color: var(--accent-blue);
+            transform: translateX(4px);
+        }
+
+        .room-item.active {
+            border-color: var(--accent-gold);
+            background: linear-gradient(135deg, var(--bg-secondary) 0%, rgba(244, 197, 66, 0.1) 100%);
+        }
+
+        .room-name {
+            font-weight: 700;
+            color: var(--text-primary);
+            margin-bottom: 0.25rem;
+            font-size: 1.05rem;
+        }
+
+        .room-count {
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+        }
+
+        .main-content {
+            display: flex;
+            flex-direction: column;
+            gap: 1.5rem;
+        }
+
+        .current-room {
+            background: var(--bg-card);
+            border-radius: 12px;
+            border: 1px solid var(--border);
+            padding: 2rem;
+            box-shadow: 0 8px 30px rgba(0, 0, 0, 0.4);
+        }
+
+        .room-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 2rem;
+            padding-bottom: 1rem;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .room-title {
+            font-family: 'Cinzel', serif;
+            font-size: 1.8rem;
+            color: var(--accent-gold);
+            text-shadow: 0 0 15px rgba(244, 197, 66, 0.3);
+        }
+
+        .voice-controls {
+            display: flex;
+            gap: 1rem;
+            align-items: center;
+        }
+
+        .btn {
+            background: linear-gradient(135deg, var(--accent-blue) 0%, #3a7ed0 100%);
+            color: white;
+            border: none;
+            padding: 0.75rem 1.5rem;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 700;
+            font-size: 0.95rem;
+            transition: all 0.3s;
+            box-shadow: 0 4px 15px rgba(74, 158, 255, 0.3);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .btn::before {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 0;
+            height: 0;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.3);
+            transform: translate(-50%, -50%);
+            transition: width 0.5s, height 0.5s;
+        }
+
+        .btn:hover::before {
+            width: 300px;
+            height: 300px;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(74, 158, 255, 0.5);
+        }
+
+        .btn:active {
+            transform: translateY(0);
+        }
+
+        .btn-danger {
+            background: linear-gradient(135deg, var(--accent-red) 0%, #cc3333 100%);
+            box-shadow: 0 4px 15px rgba(255, 68, 68, 0.3);
+        }
+
+        .btn-danger:hover {
+            box-shadow: 0 6px 20px rgba(255, 68, 68, 0.5);
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .members-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 1rem;
+        }
+
+        .member-card {
+            background: var(--bg-secondary);
+            padding: 1.5rem;
+            border-radius: 8px;
+            border: 2px solid var(--border);
+            text-align: center;
+            transition: all 0.3s;
+            animation: slideIn 0.4s ease-out;
+        }
+
+        @keyframes slideIn {
+            from { opacity: 0; transform: scale(0.9); }
+            to { opacity: 1; transform: scale(1); }
+        }
+
+        .member-card.speaking {
+            border-color: var(--accent-gold);
+            box-shadow: 0 0 20px rgba(244, 197, 66, 0.4);
+            transform: scale(1.05);
+        }
+
+        .member-avatar {
+            width: 80px;
+            height: 80px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, var(--accent-blue) 0%, var(--accent-gold) 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 2rem;
+            font-weight: 700;
+            color: white;
+            margin: 0 auto 1rem;
+            border: 3px solid var(--bg-card);
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+        }
+
+        .member-name {
+            font-weight: 700;
+            color: var(--text-primary);
+            margin-bottom: 0.5rem;
+        }
+
+        .member-status {
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+        }
+
+        .status-indicator {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--accent-blue);
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 4rem 2rem;
+            color: var(--text-secondary);
+        }
+
+        .empty-state-icon {
+            font-size: 4rem;
+            margin-bottom: 1rem;
+            opacity: 0.3;
+        }
+
+        .settings-panel {
+            background: var(--bg-card);
+            border-radius: 12px;
+            border: 1px solid var(--border);
+            padding: 1.5rem;
+            box-shadow: 0 8px 30px rgba(0, 0, 0, 0.4);
+        }
+
+        .settings-panel h3 {
+            font-family: 'Cinzel', serif;
+            color: var(--accent-gold);
+            margin-bottom: 1rem;
+        }
+
+        .setting-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0.75rem 0;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .setting-row:last-child {
+            border-bottom: none;
+        }
+
+        .toggle {
+            width: 50px;
+            height: 26px;
+            background: var(--bg-secondary);
+            border-radius: 13px;
+            position: relative;
+            cursor: pointer;
+            border: 1px solid var(--border);
+            transition: background 0.3s;
+        }
+
+        .toggle.active {
+            background: var(--accent-blue);
+        }
+
+        .toggle::after {
+            content: '';
+            position: absolute;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: white;
+            top: 2px;
+            left: 2px;
+            transition: transform 0.3s;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.3);
+        }
+
+        .toggle.active::after {
+            transform: translateX(24px);
+        }
+
+        .ptt-indicator {
+            position: fixed;
+            bottom: 2rem;
+            right: 2rem;
+            background: var(--accent-gold);
+            color: var(--bg-dark);
+            padding: 1rem 2rem;
+            border-radius: 8px;
+            font-weight: 700;
+            font-size: 1.1rem;
+            box-shadow: 0 8px 30px rgba(244, 197, 66, 0.6);
+            animation: pulse-glow 0.5s ease-in-out infinite alternate;
+            display: none;
+        }
+
+        .ptt-indicator.active {
+            display: block;
+        }
+
+        @keyframes pulse-glow {
+            from { box-shadow: 0 8px 30px rgba(244, 197, 66, 0.6); }
+            to { box-shadow: 0 8px 40px rgba(244, 197, 66, 0.9); }
+        }
+
+        @media (max-width: 900px) {
+            .container {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div class="header-content">
+            <h1>⚔️ GUILD VOICE</h1>
+            <div class="user-info">
+                <input type="text" id="usernameInput" class="username-input" placeholder="Enter your name..." value="Anonymous">
+                <div class="connection-status">
+                    <div class="status-dot"></div>
+                    <span id="connectionStatus">Connected</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="container">
+        <div class="sidebar">
+            <div class="room-list">
+                <h2>Voice Channels</h2>
+                <div id="roomList"></div>
+            </div>
+            
+            <div class="settings-panel">
+                <h3>Settings</h3>
+                <div class="setting-row">
+                    <span>Push to Talk (Space)</span>
+                    <div class="toggle" id="pttToggle" onclick="togglePTT()"></div>
+                </div>
+                <div class="setting-row">
+                    <span>Echo Cancellation</span>
+                    <div class="toggle active" id="echoToggle"></div>
+                </div>
+                <div class="setting-row">
+                    <span>Noise Suppression</span>
+                    <div class="toggle active" id="noiseToggle"></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="main-content">
+            <div class="current-room">
+                <div class="room-header">
+                    <div class="room-title" id="currentRoomTitle">Select a channel</div>
+                    <div class="voice-controls">
+                        <button class="btn" id="joinBtn" onclick="joinRoom()">Join Voice</button>
+                        <button class="btn btn-danger" id="leaveBtn" onclick="leaveRoom()" style="display: none;">Leave Voice</button>
+                    </div>
+                </div>
+                <div id="membersContainer"></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="ptt-indicator" id="pttIndicator">🎤 SPEAKING</div>
+
+    <!-- Hidden audio elements for remote streams -->
+    <div id="audioContainer" style="display: none;"></div>
+
+    <script>
+        // WebRTC Configuration
+        const configuration = {
+            iceServers: [
+                { urls: 'stun:stun.l.google.com:19302' },
+                { urls: 'stun:stun1.l.google.com:19302' },
+                { urls: 'stun:stun2.l.google.com:19302' }
+            ]
+        };
+
+        // Socket.io connection
+        const socket = io('https://guild-voice-chat.onrender.com');
+
+        // State
+        let localStream = null;
+        let peerConnections = {};
+        let currentRoom = null;
+        let username = 'Anonymous';
+        let isPushToTalk = false;
+        let isMuted = true;
+        let peers = new Map();
+        let audioContext = null;
+        let analyser = null;
+
+        // Room data
+        const rooms = [
+            { id: 'raid', name: '🏰 Raid Team', members: 0 },
+            { id: 'dungeon', name: '⚔️ Mythic+', members: 0 },
+            { id: 'pvp', name: '🛡️ PvP Arena', members: 0 },
+            { id: 'social', name: '🍺 Social Lounge', members: 0 }
+        ];
+
+        // Socket event handlers
+        socket.on('connect', () => {
+            console.log('Connected to server');
+            document.getElementById('connectionStatus').textContent = 'Connected';
+        });
+
+        socket.on('disconnect', () => {
+            console.log('Disconnected from server');
+            document.getElementById('connectionStatus').textContent = 'Disconnected';
+        });
+
+        socket.on('room-counts', (counts) => {
+            rooms.forEach(room => {
+                room.members = counts[room.id] || 0;
+            });
+            renderRooms();
+        });
+
+        socket.on('room-users', async (users) => {
+            console.log('Existing users in room:', users);
+            
+            // Create peer connections for existing users
+            for (const user of users) {
+                await createPeerConnection(user.userId, true, user.username);
+                peers.set(user.userId, { 
+                    username: user.username, 
+                    isSpeaking: user.isSpeaking 
+                });
+            }
+            renderMembers();
+        });
+
+        socket.on('user-joined', async ({ userId, username: joinedUsername }) => {
+            console.log('User joined:', joinedUsername);
+            peers.set(userId, { username: joinedUsername, isSpeaking: false });
+            renderMembers();
+        });
+
+        socket.on('user-left', ({ userId }) => {
+            console.log('User left:', userId);
+            
+            // Close peer connection
+            if (peerConnections[userId]) {
+                peerConnections[userId].close();
+                delete peerConnections[userId];
+            }
+            
+            // Remove audio element
+            const audioElement = document.getElementById(`audio-${userId}`);
+            if (audioElement) {
+                audioElement.remove();
+            }
+            
+            peers.delete(userId);
+            renderMembers();
+        });
+
+        socket.on('offer', async ({ offer, fromUserId, username: senderUsername }) => {
+            console.log('Received offer from:', senderUsername);
+            
+            const pc = await createPeerConnection(fromUserId, false, senderUsername);
+            await pc.setRemoteDescription(new RTCSessionDescription(offer));
+            
+            const answer = await pc.createAnswer();
+            await pc.setLocalDescription(answer);
+            
+            socket.emit('answer', {
+                answer: answer,
+                targetUserId: fromUserId
+            });
+        });
+
+        socket.on('answer', async ({ answer, fromUserId }) => {
+            console.log('Received answer from:', fromUserId);
+            const pc = peerConnections[fromUserId];
+            if (pc) {
+                await pc.setRemoteDescription(new RTCSessionDescription(answer));
+            }
+        });
+
+        socket.on('ice-candidate', async ({ candidate, fromUserId }) => {
+            const pc = peerConnections[fromUserId];
+            if (pc && candidate) {
+                await pc.addIceCandidate(new RTCIceCandidate(candidate));
+            }
+        });
+
+        socket.on('user-speaking', ({ userId, isSpeaking }) => {
+            const peer = peers.get(userId);
+            if (peer) {
+                peer.isSpeaking = isSpeaking;
+                renderMembers();
+            }
+        });
+
+        // WebRTC functions
+        async function createPeerConnection(userId, createOffer, remoteUsername) {
+            const pc = new RTCPeerConnection(configuration);
+            peerConnections[userId] = pc;
+
+            // Add local stream tracks
+            if (localStream) {
+                localStream.getTracks().forEach(track => {
+                    pc.addTrack(track, localStream);
+                });
+            }
+
+            // Handle incoming tracks
+            pc.ontrack = (event) => {
+                console.log('Received remote track from:', userId);
+                const remoteStream = event.streams[0];
+                
+                // Create or update audio element
+                let audioElement = document.getElementById(`audio-${userId}`);
+                if (!audioElement) {
+                    audioElement = document.createElement('audio');
+                    audioElement.id = `audio-${userId}`;
+                    audioElement.autoplay = true;
+                    document.getElementById('audioContainer').appendChild(audioElement);
+                }
+                audioElement.srcObject = remoteStream;
+            };
+
+            // Handle ICE candidates
+            pc.onicecandidate = (event) => {
+                if (event.candidate) {
+                    socket.emit('ice-candidate', {
+                        candidate: event.candidate,
+                        targetUserId: userId
+                    });
+                }
+            };
+
+            // Handle connection state
+            pc.onconnectionstatechange = () => {
+                console.log(`Connection state with ${userId}:`, pc.connectionState);
+            };
+
+            // Create offer if initiating
+            if (createOffer) {
+                const offer = await pc.createOffer();
+                await pc.setLocalDescription(offer);
+                
+                socket.emit('offer', {
+                    offer: offer,
+                    targetUserId: userId
+                });
+            }
+
+            return pc;
+        }
+
+        // Initialize
+        function init() {
+            renderRooms();
+            document.getElementById('usernameInput').addEventListener('change', (e) => {
+                username = e.target.value || 'Anonymous';
+            });
+
+            // Push to talk
+            document.addEventListener('keydown', (e) => {
+                if (e.code === 'Space' && isPushToTalk && localStream && currentRoom && !e.repeat) {
+                    e.preventDefault();
+                    unmute();
+                    document.getElementById('pttIndicator').classList.add('active');
+                }
+            });
+
+            document.addEventListener('keyup', (e) => {
+                if (e.code === 'Space' && isPushToTalk && localStream && currentRoom) {
+                    e.preventDefault();
+                    mute();
+                    document.getElementById('pttIndicator').classList.remove('active');
+                }
+            });
+        }
+
+        function renderRooms() {
+            const roomList = document.getElementById('roomList');
+            roomList.innerHTML = rooms.map(room => `
+                <div class="room-item ${currentRoom === room.id ? 'active' : ''}" onclick="selectRoom('${room.id}')">
+                    <div class="room-name">${room.name}</div>
+                    <div class="room-count">${room.members} member${room.members !== 1 ? 's' : ''}</div>
+                </div>
+            `).join('');
+        }
+
+        function selectRoom(roomId) {
+            if (currentRoom === roomId) return;
+            
+            if (currentRoom) {
+                leaveRoom();
+            }
+            
+            currentRoom = roomId;
+            const room = rooms.find(r => r.id === roomId);
+            document.getElementById('currentRoomTitle').textContent = room.name;
+            document.getElementById('joinBtn').style.display = 'block';
+            document.getElementById('leaveBtn').style.display = 'none';
+            renderRooms();
+            renderMembers();
+        }
+
+        async function joinRoom() {
+            if (!currentRoom) return;
+
+            try {
+                // Get microphone access
+                localStream = await navigator.mediaDevices.getUserMedia({ 
+                    audio: {
+                        echoCancellation: true,
+                        noiseSuppression: true,
+                        autoGainControl: true
+                    } 
+                });
+
+                // Start voice activity detection
+                setupVoiceActivityDetection();
+
+                // Mute by default if push-to-talk
+                if (isPushToTalk) {
+                    mute();
+                } else {
+                    unmute();
+                }
+
+                document.getElementById('joinBtn').style.display = 'none';
+                document.getElementById('leaveBtn').style.display = 'block';
+
+                // Add self to peers
+                peers.set('self', { username, isSpeaking: false });
+                
+                // Join room via socket
+                socket.emit('join-room', {
+                    roomId: currentRoom,
+                    username: username
+                });
+
+                renderMembers();
+
+                console.log('Joined room:', currentRoom);
+                
+            } catch (err) {
+                console.error('Error accessing microphone:', err);
+                alert('Could not access microphone. Please check permissions and try again.');
+            }
+        }
+
+        function leaveRoom() {
+            // Stop local stream
+            if (localStream) {
+                localStream.getTracks().forEach(track => track.stop());
+                localStream = null;
+            }
+
+            // Close all peer connections
+            Object.values(peerConnections).forEach(pc => pc.close());
+            peerConnections = {};
+
+            // Remove all remote audio elements
+            document.getElementById('audioContainer').innerHTML = '';
+
+            // Notify server
+            if (currentRoom) {
+                socket.emit('leave-room');
+            }
+
+            peers.clear();
+            
+            document.getElementById('joinBtn').style.display = 'block';
+            document.getElementById('leaveBtn').style.display = 'none';
+            
+            renderMembers();
+        }
+
+        function setupVoiceActivityDetection() {
+            audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            analyser = audioContext.createAnalyser();
+            const source = audioContext.createMediaStreamSource(localStream);
+            source.connect(analyser);
+            analyser.fftSize = 256;
+
+            const bufferLength = analyser.frequencyBinCount;
+            const dataArray = new Uint8Array(bufferLength);
+
+            let lastSpeakingState = false;
+
+            function detectVoice() {
+                if (!localStream) return;
+
+                analyser.getByteFrequencyData(dataArray);
+                const average = dataArray.reduce((a, b) => a + b) / bufferLength;
+                
+                const isSpeaking = average > 20 && !isMuted;
+                
+                if (isSpeaking !== lastSpeakingState) {
+                    lastSpeakingState = isSpeaking;
+                    const self = peers.get('self');
+                    if (self) {
+                        self.isSpeaking = isSpeaking;
+                        socket.emit('speaking-status', { isSpeaking });
+                        renderMembers();
+                    }
+                }
+
+                requestAnimationFrame(detectVoice);
+            }
+
+            detectVoice();
+        }
+
+        function renderMembers() {
+            const container = document.getElementById('membersContainer');
+            
+            if (peers.size === 0) {
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">🎤</div>
+                        <div>No one here yet. Join voice to start talking!</div>
+                    </div>
+                `;
+                return;
+            }
+
+            container.innerHTML = `
+                <div class="members-grid">
+                    ${Array.from(peers.entries()).map(([id, peer]) => `
+                        <div class="member-card ${peer.isSpeaking ? 'speaking' : ''}">
+                            <div class="member-avatar">${peer.username.charAt(0).toUpperCase()}</div>
+                            <div class="member-name">${peer.username}${id === 'self' ? ' (You)' : ''}</div>
+                            <div class="member-status">
+                                <span class="status-indicator"></span>
+                                ${peer.isSpeaking ? 'Speaking' : 'Connected'}
+                            </div>
+                        </div>
+                    `).join('')}
+                </div>
+            `;
+        }
+
+        function mute() {
+            if (localStream) {
+                localStream.getAudioTracks().forEach(track => {
+                    track.enabled = false;
+                });
+                isMuted = true;
+                const self = peers.get('self');
+                if (self) {
+                    self.isSpeaking = false;
+                    socket.emit('speaking-status', { isSpeaking: false });
+                    renderMembers();
+                }
+            }
+        }
+
+        function unmute() {
+            if (localStream) {
+                localStream.getAudioTracks().forEach(track => {
+                    track.enabled = true;
+                });
+                isMuted = false;
+            }
+        }
+
+        function togglePTT() {
+            isPushToTalk = !isPushToTalk;
+            document.getElementById('pttToggle').classList.toggle('active');
+            
+            if (isPushToTalk && localStream) {
+                mute();
+            } else if (localStream) {
+                unmute();
+            }
+        }
+
+        init();
+    </script>
+</body>
+</html>
