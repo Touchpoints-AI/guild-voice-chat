@@ -530,6 +530,7 @@
         let peers = new Map();
         let audioContext = null;
         let analyser = null;
+        let wakeLock = null;
 
         // Room data
         const rooms = [
@@ -755,6 +756,28 @@
                     } 
                 });
 
+                // Request wake lock to keep screen on
+                try {
+                    if ('wakeLock' in navigator) {
+                        wakeLock = await navigator.wakeLock.request('screen');
+                        console.log('Wake Lock active - screen will stay on');
+                        
+                        // Re-request wake lock if released
+                        wakeLock.addEventListener('release', async () => {
+                            console.log('Wake Lock released');
+                            if (localStream && currentRoom) {
+                                try {
+                                    wakeLock = await navigator.wakeLock.request('screen');
+                                } catch (err) {
+                                    console.log('Could not re-acquire wake lock');
+                                }
+                            }
+                        });
+                    }
+                } catch (err) {
+                    console.log('Wake Lock not supported or denied:', err);
+                }
+
                 // Start voice activity detection
                 setupVoiceActivityDetection();
 
@@ -788,6 +811,13 @@
         }
 
         function leaveRoom() {
+            // Release wake lock
+            if (wakeLock) {
+                wakeLock.release();
+                wakeLock = null;
+                console.log('Wake Lock released');
+            }
+
             // Stop local stream
             if (localStream) {
                 localStream.getTracks().forEach(track => track.stop());
