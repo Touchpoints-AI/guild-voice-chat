@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Guild Voice - Real-time Voice Chat</title>
+    <title>Black Label Voice - Real-time Voice Chat</title>
     <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700;900&family=Lato:wght@300;400;700&display=swap" rel="stylesheet">
     <script src="/socket.io/socket.io.js"></script>
     <style>
@@ -453,7 +453,7 @@
 <body>
     <div class="header">
         <div class="header-content">
-            <h1>⚔️ GUILD VOICE</h1>
+            <h1>⚔️ BLACK LABEL VOICE</h1>
             <div class="user-info">
                 <input type="text" id="usernameInput" class="username-input" placeholder="Enter your name..." value="Anonymous">
                 <div class="connection-status">
@@ -477,6 +477,17 @@
                     <span>Push to Talk (Space)</span>
                     <div class="toggle" id="pttToggle" onclick="togglePTT()"></div>
                 </div>
+                <div class="setting-row" id="pttKeyRow" style="display: none;">
+                    <span>PTT Key:</span>
+                    <select id="pttKeySelect" class="username-input" style="width: 120px; padding: 0.25rem 0.5rem;" onchange="changePTTKey()">
+                        <option value="Space">Space</option>
+                        <option value="KeyV">V</option>
+                        <option value="KeyB">B</option>
+                        <option value="KeyT">T</option>
+                        <option value="ControlLeft">Left Ctrl</option>
+                        <option value="AltLeft">Left Alt</option>
+                    </select>
+                </div>
                 <div class="setting-row">
                     <span>Echo Cancellation</span>
                     <div class="toggle active" id="echoToggle"></div>
@@ -493,6 +504,7 @@
                 <div class="room-header">
                     <div class="room-title" id="currentRoomTitle">Select a channel</div>
                     <div class="voice-controls">
+                        <button class="btn" id="muteBtn" onclick="toggleMute()" style="display: none;">🔇 Mute</button>
                         <button class="btn" id="joinBtn" onclick="joinRoom()">Join Voice</button>
                         <button class="btn btn-danger" id="leaveBtn" onclick="leaveRoom()" style="display: none;">Leave Voice</button>
                     </div>
@@ -531,12 +543,14 @@
         let audioContext = null;
         let analyser = null;
         let wakeLock = null;
+        let pttKey = 'Space';
 
         // Room data
         const rooms = [
             { id: 'raid', name: '🏰 Raid Team', members: 0 },
             { id: 'dungeon', name: '⚔️ Mythic+', members: 0 },
             { id: 'pvp', name: '🛡️ PvP Arena', members: 0 },
+            { id: 'beanbag', name: '🛋️ Wade\'s Bean Bag Chair', members: 0 },
             { id: 'social', name: '🍺 Social Lounge', members: 0 }
         ];
 
@@ -701,7 +715,7 @@
 
             // Push to talk
             document.addEventListener('keydown', (e) => {
-                if (e.code === 'Space' && isPushToTalk && localStream && currentRoom && !e.repeat) {
+                if (e.code === pttKey && isPushToTalk && localStream && currentRoom && !e.repeat) {
                     e.preventDefault();
                     unmute();
                     document.getElementById('pttIndicator').classList.add('active');
@@ -709,7 +723,7 @@
             });
 
             document.addEventListener('keyup', (e) => {
-                if (e.code === 'Space' && isPushToTalk && localStream && currentRoom) {
+                if (e.code === pttKey && isPushToTalk && localStream && currentRoom) {
                     e.preventDefault();
                     mute();
                     document.getElementById('pttIndicator').classList.remove('active');
@@ -790,6 +804,8 @@
 
                 document.getElementById('joinBtn').style.display = 'none';
                 document.getElementById('leaveBtn').style.display = 'block';
+                document.getElementById('muteBtn').style.display = 'block';
+                updateMuteButton();
 
                 // Add self to peers
                 peers.set('self', { username, isSpeaking: false });
@@ -840,6 +856,7 @@
             
             document.getElementById('joinBtn').style.display = 'block';
             document.getElementById('leaveBtn').style.display = 'none';
+            document.getElementById('muteBtn').style.display = 'none';
             
             renderMembers();
         }
@@ -937,10 +954,43 @@
             isPushToTalk = !isPushToTalk;
             document.getElementById('pttToggle').classList.toggle('active');
             
+            // Show/hide PTT key selector
+            const pttKeyRow = document.getElementById('pttKeyRow');
+            if (isPushToTalk) {
+                pttKeyRow.style.display = 'flex';
+            } else {
+                pttKeyRow.style.display = 'none';
+            }
+            
             if (isPushToTalk && localStream) {
                 mute();
             } else if (localStream) {
                 unmute();
+            }
+        }
+
+        function changePTTKey() {
+            pttKey = document.getElementById('pttKeySelect').value;
+            console.log('PTT key changed to:', pttKey);
+        }
+
+        function toggleMute() {
+            if (isMuted) {
+                unmute();
+            } else {
+                mute();
+            }
+            updateMuteButton();
+        }
+
+        function updateMuteButton() {
+            const muteBtn = document.getElementById('muteBtn');
+            if (isMuted) {
+                muteBtn.textContent = '🔇 Unmute';
+                muteBtn.classList.add('btn-danger');
+            } else {
+                muteBtn.textContent = '🔊 Mute';
+                muteBtn.classList.remove('btn-danger');
             }
         }
 
