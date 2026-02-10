@@ -471,6 +471,11 @@
                 <div id="roomList"></div>
             </div>
             
+            <div class="room-list" style="margin-top: 1.5rem;">
+                <h2>Discussion Rooms</h2>
+                <div id="discussionList"></div>
+            </div>
+            
             <div class="settings-panel">
                 <h3>Settings</h3>
                 <div class="setting-row">
@@ -500,7 +505,8 @@
         </div>
 
         <div class="main-content">
-            <div class="current-room">
+            <!-- Voice Room View -->
+            <div class="current-room" id="voiceRoomView">
                 <div class="room-header">
                     <div class="room-title" id="currentRoomTitle">Select a channel</div>
                     <div class="voice-controls">
@@ -510,6 +516,24 @@
                     </div>
                 </div>
                 <div id="membersContainer"></div>
+            </div>
+
+            <!-- Discussion/Chat Room View -->
+            <div class="current-room" id="chatRoomView" style="display: none;">
+                <div class="room-header">
+                    <div class="room-title" id="chatRoomTitle">Select a discussion room</div>
+                </div>
+                <div style="display: flex; flex-direction: column; height: 600px;">
+                    <div id="chatMessages" style="flex: 1; overflow-y: auto; padding: 1rem; background: var(--bg-secondary); border-radius: 8px; margin-bottom: 1rem;">
+                        <!-- Messages will appear here -->
+                    </div>
+                    <div style="display: flex; gap: 0.5rem;">
+                        <input type="text" id="chatInput" placeholder="Type your message..." 
+                               style="flex: 1; background: var(--bg-secondary); border: 1px solid var(--border); color: var(--text-primary); padding: 0.75rem 1rem; border-radius: 8px; font-size: 0.95rem; outline: none;"
+                               onkeypress="if(event.key === 'Enter') sendMessage()">
+                        <button class="btn" onclick="sendMessage()">Send</button>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
@@ -553,6 +577,17 @@
             { id: 'beanbag', name: '🛋️ Wade\'s Bean Bag Chair', members: 0 },
             { id: 'social', name: '🍺 Social Lounge', members: 0 }
         ];
+
+        // Discussion rooms
+        const discussionRooms = [
+            { id: 'general', name: '💬 General', members: 0 },
+            { id: 'strategy', name: '🎯 Strategy & Tips', members: 0 },
+            { id: 'loot', name: '💰 Loot & Gear', members: 0 },
+            { id: 'memes', name: '😂 Memes & Off-Topic', members: 0 }
+        ];
+
+        let currentDiscussionRoom = null;
+        let chatMessages = [];
 
         // Socket event handlers
         socket.on('connect', () => {
@@ -649,6 +684,15 @@
             }
         });
 
+        socket.on('chat-message', ({ username, message, timestamp }) => {
+            addChatMessage(username, message, timestamp);
+        });
+
+        socket.on('chat-history', (messages) => {
+            chatMessages = messages;
+            renderChatMessages();
+        });
+
         // WebRTC functions
         async function createPeerConnection(userId, createOffer, remoteUsername) {
             const pc = new RTCPeerConnection(configuration);
@@ -709,6 +753,7 @@
         // Initialize
         function init() {
             renderRooms();
+            renderDiscussionRooms();
             document.getElementById('usernameInput').addEventListener('change', (e) => {
                 username = e.target.value || 'Anonymous';
             });
@@ -747,6 +792,17 @@
             if (currentRoom) {
                 leaveRoom();
             }
+
+            // Leave discussion room if in one
+            if (currentDiscussionRoom) {
+                socket.emit('leave-discussion', { roomId: currentDiscussionRoom });
+                currentDiscussionRoom = null;
+                chatMessages = [];
+            }
+
+            // Switch to voice view
+            document.getElementById('voiceRoomView').style.display = 'block';
+            document.getElementById('chatRoomView').style.display = 'none';
             
             currentRoom = roomId;
             const room = rooms.find(r => r.id === roomId);
@@ -754,6 +810,7 @@
             document.getElementById('joinBtn').style.display = 'block';
             document.getElementById('leaveBtn').style.display = 'none';
             renderRooms();
+            renderDiscussionRooms();
             renderMembers();
         }
 
@@ -992,6 +1049,81 @@
                 muteBtn.textContent = '🔊 Mute';
                 muteBtn.classList.remove('btn-danger');
             }
+        }
+
+        function renderDiscussionRooms() {
+            const discussionList = document.getElementById('discussionList');
+            discussionList.innerHTML = discussionRooms.map(room => `
+                <div class="room-item ${currentDiscussionRoom === room.id ? 'active' : ''}" onclick="selectDiscussionRoom('${room.id}')">
+                    <div class="room-name">${room.name}</div>
+                    <div class="room-count">${room.members} member${room.members !== 1 ? 's' : ''}</div>
+                </div>
+            `).join('');
+        }
+
+        function selectDiscussionRoom(roomId) {
+            // Leave voice room if in one
+            if (currentRoom) {
+                leaveRoom();
+            }
+
+            currentDiscussionRoom = roomId;
+            const room = discussionRooms.find(r => r.id === roomId);
+            
+            // Switch to chat view
+            document.getElementById('voiceRoomView').style.display = 'none';
+            document.getElementById('chatRoomView').style.display = 'block';
+            document.getElementById('chatRoomTitle').textContent = room.name;
+            
+            // Join discussion room via socket
+            socket.emit('join-discussion', { roomId, username });
+            
+            renderDiscussionRooms();
+        }
+
+        function sendMessage() {
+            const input = document.getElementById('chatInput');
+            const message = input.value.trim();
+            
+            if (message && currentDiscussionRoom) {
+                socket.emit('chat-message', {
+                    roomId: currentDiscussionRoom,
+                    message: message,
+                    username: username
+                });
+                input.value = '';
+            }
+        }
+
+        function addChatMessage(user, message, timestamp) {
+            chatMessages.push({ user, message, timestamp });
+            renderChatMessages();
+        }
+
+        function renderChatMessages() {
+            const container = document.getElementById('chatMessages');
+            container.innerHTML = chatMessages.map(msg => {
+                const time = new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                const isOwn = msg.user === username;
+                return `
+                    <div style="margin-bottom: 1rem; padding: 0.75rem; background: ${isOwn ? 'rgba(74, 158, 255, 0.1)' : 'transparent'}; border-radius: 8px; border-left: 3px solid ${isOwn ? 'var(--accent-blue)' : 'var(--accent-gold)'};">
+                        <div style="display: flex; justify-content: space-between; margin-bottom: 0.25rem;">
+                            <span style="font-weight: 700; color: var(--accent-gold);">${msg.user}</span>
+                            <span style="font-size: 0.8rem; color: var(--text-secondary);">${time}</span>
+                        </div>
+                        <div style="color: var(--text-primary);">${escapeHtml(msg.message)}</div>
+                    </div>
+                `;
+            }).join('');
+            
+            // Scroll to bottom
+            container.scrollTop = container.scrollHeight;
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
         }
 
         init();
