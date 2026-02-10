@@ -18,6 +18,8 @@ app.use(express.static('public'));
 // Store room and user information
 const rooms = new Map();
 const users = new Map();
+const discussionRooms = new Map();
+const chatHistory = new Map(); // roomId -> array of messages
 
 io.on('connection', (socket) => {
     console.log('User connected:', socket.id);
@@ -111,6 +113,51 @@ io.on('connection', (socket) => {
     // Leave room
     socket.on('leave-room', () => {
         handleUserLeave(socket);
+    });
+
+    // Discussion room handlers
+    socket.on('join-discussion', ({ roomId, username }) => {
+        console.log(`${username} joining discussion room: ${roomId}`);
+        
+        socket.join(`discussion-${roomId}`);
+        
+        if (!discussionRooms.has(roomId)) {
+            discussionRooms.set(roomId, new Set());
+        }
+        discussionRooms.get(roomId).add(socket.id);
+        
+        // Send chat history
+        const history = chatHistory.get(roomId) || [];
+        socket.emit('chat-history', history);
+    });
+
+    socket.on('leave-discussion', ({ roomId }) => {
+        socket.leave(`discussion-${roomId}`);
+        const room = discussionRooms.get(roomId);
+        if (room) {
+            room.delete(socket.id);
+            if (room.size === 0) {
+                discussionRooms.delete(roomId);
+            }
+        }
+    });
+
+    socket.on('chat-message', ({ roomId, message, username }) => {
+        const timestamp = new Date().toISOString();
+        const chatMessage = { username, message, timestamp };
+        
+        // Store in history (keep last 100 messages)
+        if (!chatHistory.has(roomId)) {
+            chatHistory.set(roomId, []);
+        }
+        const history = chatHistory.get(roomId);
+        history.push(chatMessage);
+        if (history.length > 100) {
+            history.shift();
+        }
+        
+        // Broadcast to all in discussion room
+        io.to(`discussion-${roomId}`).emit('chat-message', chatMessage);
     });
 
     // Disconnect
