@@ -157,6 +157,7 @@ function broadcastRoomCounts() {
         raid: rooms.get('raid')?.size || 0,
         dungeon: rooms.get('dungeon')?.size || 0,
         pvp: rooms.get('pvp')?.size || 0,
+        beanbag: rooms.get('beanbag')?.size || 0,
         social: rooms.get('social')?.size || 0
     };
     
